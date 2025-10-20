@@ -1,12 +1,12 @@
-//使用Express 框架
-//引入需要的套件
+//引入Express 框架
 const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
+
 const app = express();   // Express 這個後端框架建立的應用程式實例
 const port = 3000;       // API 伺服器要跑在 3000 port
 
-//使用 cors，允許你的 Vue 前端 (通常跑在 5173 port) 來存取後端API
+//共用使用 cors跨來源資源，允許你的 Vue 前端 (通常跑在 5173 port) 來存取後端API
 app.use(cors());
 
 // 【新增】使用 express.json() 這個中介軟體 (middleware)
@@ -26,31 +26,41 @@ const dbConfig = {
 };
 
 //--------------------------------------------商品API--------------------------------------------
-//建立 API 端點：獲取所有商品列表
+//建立 API 接收端點：獲取所有商品列表
+//用 Express 的 app.get() 這個工具
 //前端只要呼叫 http://localhost:3000/api/product 就可以拿到所有商品
 //req請求，裝了前端傳來的資料，會放在req.body內
+//前端傳來為固定的路徑，沒有任何 ":" 佔位符，所以用req.params會無法抓到值
 //res回應，當註冊成功或失敗時，後端會使用 res 來發送一個訊息或狀態碼回去給前端的 axios
 app.get('/api/product', async (req, res) => {
   try {
+    //建立一個與 MySQL 資料庫的連線，連線資料庫需要時間，所以使用非同步處理await
     const connection = await mysql.createConnection(dbConfig);
     // 從 `allProducts` 資料表中選取所有 (`*`) 資料
+    // connection.execute(...) 會回傳一個像 [ 資料結果陣列, 欄位資訊陣列 ] 的大陣列
+    // [rows]為陣列，使用解構賦值，取出第row[0]的資料結果陣列
     const [rows] = await connection.execute(' SELECT * FROM `allProducts` ');
-    await connection.end();  //手動關閉連線
-    res.json(rows); // 將結果以 JSON 格式回傳
+    //手動關閉連線
+    await connection.end();  
+    //將結果以 JSON 格式回傳
+    res.json(rows); 
 
   } catch (error) {
     console.error("查詢 allProducts 時發生錯誤:", error);
+    //當前端的axios收到狀態碼(200-299)以外的數字，就會跳入catch(error)執行
     res.status(500).json({ message: '伺服器發生錯誤' });
   }
 });
 
 //建立 API 端點：根據 ID 獲取單一商品
 //例如: http://localhost:3000/api/product/prod001
+//前端傳來的網址帶有prod001，會裝進req.params
 app.get('/api/product/:id', async (req, res) => {
   try {
-    const { id } = req.params; // 從網址中取得 id
+    // req收到是一個物件，將req.params{id:'x'} 解構賦值，將id的值取出
+    const { id } = req.params; 
     const connection = await mysql.createConnection(dbConfig);
-    // 使用 ? 作為佔位符，可以防止 SQL 注入攻擊，更安全
+    // 使用execute 的應用， ? 當作為佔位符，可以防止 SQL 注入攻擊，更安全
     const [rows] = await connection.execute(' SELECT * FROM `allProducts` WHERE `firestoreId` = ?', [id]);
     await connection.end();  //手動關閉連線
 
@@ -68,11 +78,11 @@ app.get('/api/product/:id', async (req, res) => {
 
 //--------------------------------------------會員註冊API--------------------------------------------
 //建立 API 端點：處理會員註冊
+//用 Express 的 app.post() 這個工具
 //前端 Vue 元件會對 http://localhost:3000/api/register 發送 POST 請求
-//post(地址,)
 app.post('/api/register', async (req, res) => {  
   try {
-    const {username, email, password} = req.body   //解構賦值，把前端傳來的值從.body拿出來
+    const {username, email, password} = req.body   //解構賦值，req.body為前端傳來一個物件
     
     if(!username || !email || !password){
       return res.status(400).json({ message: '所有欄位都必須填寫' });
@@ -125,18 +135,55 @@ app.post('/api/login', async (req, res) => {
 
   }else{
     //找不到對應的會員，回傳 401 (Unauthorized)
-    res.status(401).json({ message: 'Email 或密碼錯誤' });
+    res.status(401).json({ message: 'Email或密碼錯誤' });
     console.error('輸入錯誤',error);
   }
  }catch(error){
   console.error("登入時發生錯誤:", error);
-    res.status(500).json({ message: '伺服器發生錯誤' });
+    res.status(500).json({ message: '伺服器發生錯誤，登入失敗' });
  }
 });
 
-//--------------------------------------------會員更新API--------------------------------------------
+//--------------------------------------------會員密碼更新API--------------------------------------------
+//建立 API 端點：更新會員密碼
+//用 Express 的 app.put() 這個工具
+//:id 讓我們知道要更新哪一位會員
+app.put('/api/user/:id', async (req, res) => {
+  try{
+    const { id } = req.params;
+    const { password } = req.body;
+
+    //進行基本驗證，確保新密碼不是空的
+    //使用return 結束async()函式
+    if(!password){
+    return res.status(400).json({message: '密碼不得為空'});    
+    }
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.execute('UPDATE `user` SET `password` = ? WHERE `id` = ? ',[password,id]);
+    console.log(result);
+    await connection.end();  //手動關閉連線
+    
+    //可以用回傳裡的參數affectedRows來判斷，傳回的數值表示影響的資料有幾筆
+    //沒有特別回傳狀態碼res.status()，Express會預設回傳200
+    if(result.affectedRows > 0){
+      res.json('密碼更新成功');
+    }
+    else{
+      // 如果等於 0，代表傳入的 id 在資料庫裡找不到
+      res.status(404).json('找不到該會員');
+    }
+    }catch(error){
+    console.error(`更新ID: 的密碼發生錯誤`,error);
+    res.status(500).json({message: '伺服器發生錯誤，密碼無法修改'});
+    }
+  
+});
 
 
+
+
+
+//--------------------------------------------會員刪除API--------------------------------------------
 
 
 

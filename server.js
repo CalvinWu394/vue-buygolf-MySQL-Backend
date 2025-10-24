@@ -1,15 +1,18 @@
-//引入Express 框架
+//載入Express 框架
 const express = require('express');
-const mysql = require('mysql2/promise');
 const cors = require('cors');
+const mysql = require('mysql2/promise');
 
-const app = express();   // Express 這個後端框架建立的應用程式實例
-const port = 3000;       // API 伺服器要跑在 3000 port
+
+// Express 這個後端框架建立的應用程式實例
+const app = express();   
+// API 伺服器要跑在 3000 port
+const port = 3000;       
 
 //共用使用 cors跨來源資源，允許你的 Vue 前端 (通常跑在 5173 port) 來存取後端API
 app.use(cors());
 
-// 【新增】使用 express.json() 這個中介軟體 (middleware)
+// 使用 express.json() 這個中介軟體 (middleware)
 // 就像在 API 伺服器門口裝一個包裹安檢機，
 // 它會自動幫我們解析前端用 POST 請求送來的 JSON 格式資料，
 // 這樣我們才能在後續的 req.body 中輕鬆取得資料。
@@ -150,7 +153,9 @@ app.post('/api/login', async (req, res) => {
 //:id 讓我們知道要更新哪一位會員
 app.put('/api/user/:id', async (req, res) => {
   try{
+    //取得要變更密碼的ID
     const { id } = req.params;
+    //取得要變更的密碼
     const { password } = req.body;
 
     //進行基本驗證，確保新密碼不是空的
@@ -161,19 +166,20 @@ app.put('/api/user/:id', async (req, res) => {
     const connection = await mysql.createConnection(dbConfig);
     const [result] = await connection.execute('UPDATE `user` SET `password` = ? WHERE `id` = ? ',[password,id]);
     console.log(result);
-    await connection.end();  //手動關閉連線
+    //手動關閉連線
+    await connection.end();  
     
-    //可以用回傳裡的參數affectedRows來判斷，傳回的數值表示影響的資料有幾筆
+    //可以用回傳裡的參數affectedRows來判斷，傳回的數值表示『影響的資料有幾筆』
     //沒有特別回傳狀態碼res.status()，Express會預設回傳200
     if(result.affectedRows > 0){
-      res.json('密碼更新成功');
+      res.json({ message:'密碼更新成功' });
     }
     else{
       // 如果等於 0，代表傳入的 id 在資料庫裡找不到
       res.status(404).json('找不到該會員');
     }
     }catch(error){
-    console.error(`更新ID: 的密碼發生錯誤`,error);
+    console.error(`更新ID: ${req.params.id} 的密碼時發生錯誤`,error);
     res.status(500).json({message: '伺服器發生錯誤，密碼無法修改'});
     }
   
@@ -181,10 +187,33 @@ app.put('/api/user/:id', async (req, res) => {
 
 
 
-
-
 //--------------------------------------------會員刪除API--------------------------------------------
+app.delete('/api/user/:id', async(req,res) => {
+  //取得要刪除會員的ID
+  const { id } = req.params;
+  
+  try{
+    const connection = await mysql.createConnection(dbConfig);
+    const [result] = await connection.execute('DELETE FROM `user` WHERE `id` = ? ',[id]);
+    //console.log(result);
+    //手動關閉連線
+    await connection.end();
 
+    if(result.affectedRows > 0){
+      //res.json({ message: `${req.params.id} 會員帳號已成功刪除` });
+      res.json({ message: '會員帳號已成功刪除' });
+    } else {
+      // 找不到該會員
+      res.status(404).json({ message: '找不到該會員' });
+    }
+
+  } catch (error) {
+    console.error(`刪除 ID: ${req.params.id} 的會員時發生錯誤:`, error);
+    res.status(500).json({ message: '伺服器發生錯誤' });
+  
+
+  }
+});
 
 
 
